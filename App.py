@@ -1,18 +1,24 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Proviamo a vedere cosa legge l'app (senza mostrare la chiave intera per sicurezza)
-if "api_key" in st.secrets:
-    k = st.secrets["api_key"]
-    st.write(f"✅ Chiave trovata! Inizia con: {k[:5]}... ed è lunga {len(k)} caratteri.")
-else:
-    st.error("❌ La chiave non è stata trovata nei Secrets di Streamlit!")
+# Configurazione rapida
+try:
+    api_key = st.secrets["api_key"].strip()
+    genai.configure(api_key=api_key)
+    
+    # Proviamo a elencare i modelli per vedere quale puoi usare
+    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    # Scegliamo il primo disponibile (di solito gemini-pro o gemini-1.5-flash)
+    model_name = available_models[0] if available_models else 'gemini-pro'
+    model = genai.GenerativeModel(model_name)
+    
+    st.success(f"✅ Connesso con successo! Modello in uso: {model_name}")
+except Exception as e:
+    st.error(f"❌ Errore critico: {e}")
+    st.info("Se vedi ancora 404, prova a creare una chiave con un account Gmail differente.")
 
-if st.button("Fai un test veloce"):
-    try:
-        genai.configure(api_key=st.secrets["api_key"].strip())
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content("Dì 'Ciao, sono pronto!'")
-        st.success(response.text)
-    except Exception as e:
-        st.error(f"Errore: {e}")
+# Interfaccia minima per test
+user_input = st.text_input("Fai una domanda veloce al maestro:")
+if st.button("Invia"):
+    response = model.generate_content(user_input)
+    st.write(response.text)
