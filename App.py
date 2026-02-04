@@ -2,62 +2,65 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# 1. Configurazione API Key
+# Configurazione API
 api_key = st.secrets["api_key"].strip()
 genai.configure(api_key=api_key)
 
-# Usiamo il modello che ha funzionato nel test
-model = genai.GenerativeModel('gemini-2.5-flash')
+# --- STILE "AI STUDIO" ---
+st.set_page_config(page_title="Gemini AI Studio - School Edition", layout="wide")
 
-# 2. Interfaccia della Classe
-st.set_page_config(page_title="Maestro Digitale 5^A", page_icon="🍎")
-st.title("🍎 Il Maestro Digitale (Classe 5^A)")
-st.write("Benvenuti! Caricate la foto del quaderno o scrivete il vostro testo qui sotto.")
+# CSS personalizzato per emulare i colori di Google
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; }
+    .stTextArea textarea { border-radius: 10px; border: 1px solid #dadce0; }
+    .sidebar .sidebar-content { background-color: #ffffff; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# 3. Input alunno
-uploaded_file = st.file_uploader("📸 Scatta o carica una foto", type=['png', 'jpg', 'jpeg'])
-user_text = st.text_area("✍️ Scrivi qui il tuo compito:", height=150)
+# --- SIDEBAR (Come in AI Studio) ---
+with st.sidebar:
+    st.image("https://www.gstatic.com/lamda/images/gemini_sparkle_v002_d47353039331e16a02ad.svg", width=50)
+    st.title("Settings")
+    model_choice = st.selectbox("Model", ["gemini-2.5-flash", "gemini-1.5-pro"])
+    temp = st.slider("Temperature", 0.0, 2.0, 0.7)
+    st.info("Queste impostazioni controllano quanto il Maestro è 'creativo'.")
 
-if st.button("✨ Chiedi aiuto al Maestro", type="primary"):
-    if not user_text and not uploaded_file:
-        st.warning("Ehi, non hai scritto nulla!")
-    else:
-        with st.spinner("Il maestro sta leggendo..."):
-            try:
-                prompt = "Sei un maestro di scuola primaria italiano gentile e incoraggiante. Se ricevi un'immagine, trascrivila. Correggi gli errori ortografici e grammaticali, spiega le regole in modo semplice e termina sempre con un complimento."
-                
-                content = [prompt]
+# --- MAIN INTERFACE ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("Input")
+    user_text = st.text_area("System Instructions / User Prompt", 
+                             placeholder="Scrivi qui il compito o le istruzioni...", 
+                             height=300)
+    uploaded_file = st.file_uploader("Upload Image (OCR)", type=['png', 'jpg', 'jpeg'])
+
+with col2:
+    st.subheader("Run & Output")
+    if st.button("Run Model"):
+        if not user_text and not uploaded_file:
+            st.error("Inserisci un testo o un'immagine.")
+        else:
+            model = genai.GenerativeModel(model_choice)
+            with st.spinner("Generating..."):
+                # Logica di invio
+                prompt = "Sei un maestro di primaria. Correggi e spiega: "
+                content = [prompt + user_text]
                 if uploaded_file:
-                    img = Image.open(uploaded_file)
-                    content.append(img)
-                if user_text:
-                    content.append(user_text)
-
+                    content.append(Image.open(uploaded_file))
+                
                 response = model.generate_content(content)
-                risposta = response.text
                 
-                st.success("Ecco i miei consigli:")
-                st.write(risposta)
-
-                # --- TASTO LETTURA VOCALE ---
-                clean_text = risposta.replace('"', '').replace("'", "").replace("\n", " ").replace("*", "")
+                st.markdown("### Response")
+                st.write(response.text)
                 
-                html_speech = f"""
-                <div style="background-color:#e8f4ea; padding:20px; border-radius:15px; text-align:center; border: 2px solid #4CAF50;">
-                    <button id="btnVoce" style="background-color:#4CAF50; color:white; padding:15px 30px; border:none; border-radius:10px; cursor:pointer; font-size:20px; font-weight:bold;">
-                        🔊 ASCOLTA IL MAESTRO
+                # Tasto Audio integrato nello stile
+                clean_text = response.text.replace('"', '').replace("'", "").replace("\n", " ").replace("*", "")
+                st.components.v1.html(f"""
+                    <button onclick="window.speechSynthesis.speak(new SpeechSynthesisUtterance('{clean_text}'))" 
+                    style="width:100%; padding:10px; background:#4CAF50; color:white; border:none; border-radius:5px; cursor:pointer;">
+                    🔊 Play Response
                     </button>
-                </div>
-                <script>
-                    document.getElementById('btnVoce').onclick = function() {{
-                        var msg = new SpeechSynthesisUtterance("{clean_text}");
-                        msg.lang = 'it-IT';
-                        msg.rate = 0.9;
-                        window.speechSynthesis.speak(msg);
-                    }};
-                </script>
-                """
-                st.components.v1.html(html_speech, height=150)
-
-            except Exception as e:
-                st.error(f"Errore: {e}")
+                """, height=50)
