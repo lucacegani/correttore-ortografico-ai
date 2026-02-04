@@ -7,7 +7,7 @@ api_key = st.secrets["api_key"].strip()
 genai.configure(api_key=api_key)
 
 # Proviamo il modello più stabile in assoluto
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 # 2. Interfaccia
 st.set_page_config(page_title="Maestro Digitale 5^A", page_icon="📝")
