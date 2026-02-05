@@ -1,66 +1,104 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import io
 
-# Configurazione API
+# 1. Configurazione API e Modello
 api_key = st.secrets["api_key"].strip()
 genai.configure(api_key=api_key)
 
-# --- STILE "AI STUDIO" ---
-st.set_page_config(page_title="Gemini AI Studio - School Edition", layout="wide")
+# Configurazione del Maestro (Presa dalle tue istruzioni di AI Studio)
+SYSTEM_PROMPT = """
+Sei il "Maestro Digitale", un tutor esperto in didattica per la scuola primaria (bambini di 10-11 anni). Il tuo tono è incoraggiante, chiaro e mai severo.
+Obiettivo: Aiutare l'alunno a trasformare i suoi testi in testi corretti, spiegando gli errori in modo pedagogico.
 
-# CSS personalizzato per emulare i colori di Google
+Compiti specifici:
+1. Fase OCR (se ricevi un'immagine): Trascrivi fedelmente tutto il testo che vedi, mantenendo anche gli errori originali.
+2. Fase Correzione: Riscrivi il testo in modo corretto. Mantieni lo stile del bambino, non usare parole troppo difficili.
+3. Fase Spiegazione: Scegli 2 o 3 errori importanti e spiega la regola (es. l'uso dell'H, doppie, ecc.) assegnando un 'Punto Riconoscimento' per ogni regola spiegata correttamente.
+
+Formato della risposta:
+📝 Il tuo testo originale
+[Testo originale]
+✅ La versione corretta
+[Testo corretto]
+💡 I consigli del Maestro
+Regola: [Spiegazione con punti riconoscimento]
+Incoraggiamento: [Frase positiva]
+"""
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_PROMPT
+)
+
+# 2. Interfaccia Grafica (Stile Quaderno)
+st.set_page_config(page_title="Maestro Digitale", page_icon="🍎")
+
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; }
-    .stTextArea textarea { border-radius: 10px; border: 1px solid #dadce0; }
-    .sidebar .sidebar-content { background-color: #ffffff; }
+    .stTextArea textarea {
+        background-color: #f0f8ff;
+        color: #172554; /* Blu scuro per leggibilità */
+        font-size: 18px !important;
+        border: 2px solid #bfdbfe;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR (Come in AI Studio) ---
-with st.sidebar:
-    st.image("https://www.gstatic.com/lamda/images/gemini_sparkle_v002_d47353039331e16a02ad.svg", width=50)
-    st.title("Settings")
-    model_choice = st.selectbox("Model", ["gemini-2.5-flash", "gemini-1.5-pro"])
-    temp = st.slider("Temperature", 0.0, 2.0, 0.7)
-    st.info("Queste impostazioni controllano quanto il Maestro è 'creativo'.")
+st.title("🍎 Il Maestro Digitale")
 
-# --- MAIN INTERFACE ---
-col1, col2 = st.columns([2, 1])
+# Selettore Voce (Simulato come nel tuo progetto)
+voce_scelta = st.sidebar.selectbox("Scegli la voce del Maestro:", ["Kore (Dolce)", "Puck (Vivace)", "Zephyr", "Fenrir"])
 
-with col1:
-    st.subheader("Input")
-    user_text = st.text_area("System Instructions / User Prompt", 
-                             placeholder="Scrivi qui il compito o le istruzioni...", 
-                             height=300)
-    uploaded_file = st.file_uploader("Upload Image (OCR)", type=['png', 'jpg', 'jpeg'])
+# Area Input
+uploaded_file = st.file_uploader("📸 Carica la foto del quaderno", type=['png', 'jpg', 'jpeg'])
+user_text = st.text_area("✍️ Scrivi qui il tuo testo (il Maestro leggerà esattamente quello che scrivi):", height=200)
 
-with col2:
-    st.subheader("Run & Output")
-    if st.button("Run Model"):
-        if not user_text and not uploaded_file:
-            st.error("Inserisci un testo o un'immagine.")
-        else:
-            model = genai.GenerativeModel(model_choice)
-            with st.spinner("Generating..."):
-                # Logica di invio
-                prompt = "Sei un maestro di primaria. Correggi e spiega: "
-                content = [prompt + user_text]
-                if uploaded_file:
-                    content.append(Image.open(uploaded_file))
-                
-                response = model.generate_content(content)
-                
-                st.markdown("### Response")
-                st.write(response.text)
-                
-                # Tasto Audio integrato nello stile
-                clean_text = response.text.replace('"', '').replace("'", "").replace("\n", " ").replace("*", "")
-                st.components.v1.html(f"""
-                    <button onclick="window.speechSynthesis.speak(new SpeechSynthesisUtterance('{clean_text}'))" 
-                    style="width:100%; padding:10px; background:#4CAF50; color:white; border:none; border-radius:5px; cursor:pointer;">
-                    🔊 Play Response
-                    </button>
-                """, height=50)
+# Bottone Ascolta Testo Originale (Tassativo: Legge esattamente come scritto)
+if user_text:
+    if st.button("🔊 Ascolta quello che hai scritto"):
+        # Pulizia testo per JS
+        clean_input = user_text.replace('"', '').replace("'", "").replace("\n", " ")
+        st.components.v1.html(f"""
+            <script>
+            var msg = new SpeechSynthesisUtterance("{clean_input}");
+            msg.lang = 'it-IT';
+            msg.rate = 0.8; // Più lento per far sentire gli errori
+            window.speechSynthesis.speak(msg);
+            </script>
+        """, height=0)
+
+# Bottone Correzione
+if st.button("✨ Chiedi la correzione al Maestro", type="primary"):
+    if not user_text and not uploaded_file:
+        st.warning("Inserisci del testo o una foto!")
+    else:
+        with st.spinner("Il Maestro sta analizzando..."):
+            content = []
+            if uploaded_file:
+                img = Image.open(uploaded_file)
+                content.append(img)
+            if user_text:
+                content.append(user_text)
+            
+            response = model.generate_content(content)
+            risposta_piena = response.text
+            
+            st.markdown("---")
+            st.write(risposta_piena)
+            
+            # Bottone per leggere la CORREZIONE
+            clean_output = risposta_piena.replace('"', '').replace("'", "").replace("\n", " ").replace("*", "")
+            st.components.v1.html(f"""
+                <button onclick="speak()" style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">
+                🔊 Ascolta la correzione del Maestro
+                </button>
+                <script>
+                function speak() {{
+                    var msg = new SpeechSynthesisUtterance("{clean_output}");
+                    msg.lang = 'it-IT';
+                    window.speechSynthesis.speak(msg);
+                }}
+                </script>
+            """, height=60)
